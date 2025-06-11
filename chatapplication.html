@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Real-Time Chat App with React and WebSockets</title>
+  <style>
+    body {
+      margin: 0;
+      background: linear-gradient(135deg, #1e3c72, #2a5298);
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      color: #f0f0f0;
+      height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+    #root {
+      width: 100%;
+      max-width: 600px;
+      height: 90vh;
+      background: rgba(0,0,0,0.75);
+      border-radius: 12px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    header {
+      background: #24292e;
+      padding: 16px 24px;
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: #61dafb;
+      text-align: center;
+      user-select: none;
+    }
+    .chat-messages {
+      flex: 1;
+      padding: 16px 20px;
+      overflow-y: auto;
+      background: #121212;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .message {
+      max-width: 75%;
+      padding: 12px 16px;
+      border-radius: 16px;
+      line-height: 1.3;
+      font-size: 1rem;
+      word-break: break-word;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.5);
+      user-select: text;
+    }
+    .message.sent {
+      background: #0d6efd;
+      color: white;
+      align-self: flex-end;
+      border-bottom-right-radius: 4px;
+    }
+    .message.received {
+      background: #2c2f33;
+      color: #ddd;
+      align-self: flex-start;
+      border-bottom-left-radius: 4px;
+    }
+    .status {
+      text-align: center;
+      font-size: 0.9rem;
+      padding: 6px 10px;
+      color: #bbb;
+      user-select: none;
+    }
+    form {
+      display: flex;
+      padding: 12px 16px;
+      background: #24292e;
+      gap: 12px;
+    }
+    input[type="text"] {
+      flex-grow: 1;
+      border: none;
+      border-radius: 20px;
+      padding: 10px 16px;
+      font-size: 1rem;
+      outline: none;
+      background: #1b1f23;
+      color: #eee;
+      transition: background-color 0.2s ease;
+    }
+    input[type="text"]:focus {
+      background: #2a2f36;
+    }
+    button {
+      background: #0d6efd;
+      border: none;
+      color: white;
+      padding: 0 20px;
+      font-weight: 700;
+      font-size: 1.1rem;
+      border-radius: 20px;
+      cursor: pointer;
+      transition: background-color 0.3s ease;
+      user-select: none;
+    }
+    button:disabled {
+      background: #0d6efd80;
+      cursor: not-allowed;
+    }
+    button:hover:not(:disabled) {
+      background: #0b5ed7;
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script>
+    const { useState, useEffect, useRef } = React;
+
+    function ChatApp() {
+      const [ws, setWs] = useState(null);
+      const [connected, setConnected] = useState(false);
+      const [messages, setMessages] = useState([]);
+      const [input, setInput] = useState('');
+      const messagesEndRef = useRef(null);
+
+      useEffect(() => {
+        // Connect to WebSocket echo server
+        // Using wss://echo.websocket.org is deprecated, so we use wss://ws.postman-echo.com/raw
+        // Alternative public echo websockets can be used, or local WebSocket server for testing.
+        const socket = new WebSocket('wss://ws.postman-echo.com/raw');
+
+        socket.onopen = () => {
+          setConnected(true);
+          addStatusMessage('Connected to chat server.');
+        };
+
+        socket.onmessage = (event) => {
+          addMessage(event.data, 'received');
+        };
+
+        socket.onclose = () => {
+          setConnected(false);
+          addStatusMessage('Disconnected from chat server.');
+        };
+
+        socket.onerror = (error) => {
+          console.error('WebSocket error:', error);
+          addStatusMessage('WebSocket error occurred. Check console.');
+        };
+
+        setWs(socket);
+
+        return () => {
+          socket.close();
+        };
+      }, []); // Run once
+
+      useEffect(() => {
+        scrollToBottom();
+      }, [messages]);
+
+      function scrollToBottom() {
+        if(messagesEndRef.current) {
+          messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+        }
+      }
+
+      function addMessage(text, type) {
+        setMessages(prev => [...prev, { text, type, id: Date.now() + Math.random() }]);
+      }
+
+      function addStatusMessage(text) {
+        setMessages(prev => [...prev, { text, type: 'status', id: Date.now() + Math.random() }]);
+      }
+
+      function handleSend(e) {
+        e.preventDefault();
+        if (input.trim() === '' || !connected) return;
+
+        // Send message
+        ws.send(input);
+        addMessage(input, 'sent');
+        setInput('');
+      }
+
+      return (
+        React.createElement("div", {className:"chatapp"},
+          React.createElement("header", null, "Real-Time Chat"),
+          React.createElement("div", {className:"chat-messages", id:"chatMessages"},
+            messages.map(msg => (
+              React.createElement("div", {
+                key: msg.id,
+                className: msg.type === 'sent' ? 'message sent' : msg.type === 'received' ? 'message received' : 'status'
+              }, msg.text)
+            )),
+            React.createElement("div", {ref: messagesEndRef})
+          ),
+          React.createElement("form", {onSubmit:handleSend},
+            React.createElement("input", {
+              type:"text",
+              placeholder: connected ? "Type your message..." : "Connecting...",
+              value: input,
+              onChange: (e) => setInput(e.target.value),
+              disabled: !connected,
+              autoComplete: "off",
+              spellCheck: false,
+              autoFocus: true,
+              maxLength: 500,
+              required:true
+            }),
+            React.createElement("button", {type:"submit", disabled: !connected || input.trim() === ''}, "Send")
+          )
+        )
+      );
+    }
+
+    const rootElement = document.getElementById('root');
+    const root = ReactDOM.createRoot(rootElement);
+    root.render(React.createElement(ChatApp));
+  </script>
+</body>
+</html>
+
+
+
